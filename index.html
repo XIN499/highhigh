@@ -256,7 +256,7 @@
             
             // Movement
             MOVE_RANGE: 2.5,        // How far blocks move from center
-            BASE_SPEED: 0.03,       // Initial movement speed
+            BASE_SPEED: 0.045,      // Initial movement speed
             MAX_SPEED: 0.07,        // Maximum movement speed
             
             // Perfect tolerance (fraction of block size)
@@ -738,11 +738,9 @@
                 // Score: Perfect +2
                 this.state.totalScore += 2;
                 
-                // Combo bonus: 5 combo +5, 10 combo +10
-                if (this.state.perfectCombo === 5) {
-                    this.state.totalScore += 5;
-                } else if (this.state.perfectCombo === 10) {
-                    this.state.totalScore += 10;
+                // Combo bonus: combo >= 2 时额外 +combo 分 (连续2次额外+2, 3次额外+3, 以此类推)
+                if (this.state.perfectCombo >= 2) {
+                    this.state.totalScore += this.state.perfectCombo;
                 }
                 
                 // Add to stack
@@ -840,7 +838,7 @@
                 const towerHeight = this.state.layer * CONFIG.BLOCK_HEIGHT;
                 this.state.targetCameraY = towerHeight * 0.4;
                 // Zoom out enough to fit the entire tower in view
-                const zoomNeeded = Math.max(0.3, Math.min(0.85, 1.0 - this.state.layer * 0.03));
+                const zoomNeeded = Math.max(0.55, Math.min(0.9, 1.0 - this.state.layer * 0.018));
                 this.state.targetCameraZoom = zoomNeeded;
                 
                 // Check new record
