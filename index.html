@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <!-- 趣玩页入口 URL 请配置：?qw_nav_style=5（NativeBar + 返回按钮）。 -->
     <title>堆高高 3D</title>
     <style>
         * {
@@ -411,6 +412,45 @@
             padding: 40px 0;
             font-size: 14px;
         }
+
+        .lb-status,
+        .lb-my-result {
+            font-size: 13px;
+            line-height: 1.5;
+            color: rgba(255, 255, 255, 0.62);
+            text-align: center;
+        }
+
+        .lb-status {
+            min-height: 20px;
+            margin: -10px 0 10px;
+        }
+
+        .lb-my-result {
+            margin: 0 0 12px;
+            padding: 8px 10px;
+            border-radius: 10px;
+            background: rgba(255, 215, 0, 0.1);
+            color: #ffe28a;
+        }
+
+        .lb-submit {
+            width: 100%;
+            margin-top: 14px;
+            min-height: 42px;
+            border: 0;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #ffcc4d, #ff9e48);
+            color: #4a2a11;
+            font-size: 14px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .lb-submit:disabled {
+            opacity: 0.55;
+            cursor: default;
+        }
     </style>
 </head>
 <body>
@@ -440,64 +480,12 @@
                     <span class="lb-title">🏆 排行榜</span>
                     <button class="lb-close">✕</button>
                 </div>
-                <div class="lb-list">
-                    <div class="lb-item">
-                        <div class="lb-rank gold">1</div>
-                        <div class="lb-info">
-                            <div class="lb-name">小明</div>
-                            <div class="lb-layers">堆了 52 层</div>
-                        </div>
-                        <div class="lb-score">128</div>
-                    </div>
-                    <div class="lb-item">
-                        <div class="lb-rank silver">2</div>
-                        <div class="lb-info">
-                            <div class="lb-name">Alice</div>
-                            <div class="lb-layers">堆了 45 层</div>
-                        </div>
-                        <div class="lb-score">96</div>
-                    </div>
-                    <div class="lb-item">
-                        <div class="lb-rank bronze">3</div>
-                        <div class="lb-info">
-                            <div class="lb-name">堆高高大师</div>
-                            <div class="lb-layers">堆了 38 层</div>
-                        </div>
-                        <div class="lb-score">72</div>
-                    </div>
-                    <div class="lb-item">
-                        <div class="lb-rank normal">4</div>
-                        <div class="lb-info">
-                            <div class="lb-name">游客007</div>
-                            <div class="lb-layers">堆了 30 层</div>
-                        </div>
-                        <div class="lb-score">54</div>
-                    </div>
-                    <div class="lb-item">
-                        <div class="lb-rank normal">5</div>
-                        <div class="lb-info">
-                            <div class="lb-name">新手玩家</div>
-                            <div class="lb-layers">堆了 25 层</div>
-                        </div>
-                        <div class="lb-score">40</div>
-                    </div>
-                    <div class="lb-item">
-                        <div class="lb-rank normal">6</div>
-                        <div class="lb-info">
-                            <div class="lb-name">路人甲</div>
-                            <div class="lb-layers">堆了 20 层</div>
-                        </div>
-                        <div class="lb-score">30</div>
-                    </div>
-                    <div class="lb-item">
-                        <div class="lb-rank normal">7</div>
-                        <div class="lb-info">
-                            <div class="lb-name">匿名用户</div>
-                            <div class="lb-layers">堆了 15 层</div>
-                        </div>
-                        <div class="lb-score">18</div>
-                    </div>
+                <div id="leaderboard-status" class="lb-status" aria-live="polite"></div>
+                <div id="leaderboard-my-result" class="lb-my-result" hidden></div>
+                <div id="leaderboard-list" class="lb-list">
+                    <div class="lb-empty">正在加载排行榜…</div>
                 </div>
+                <button id="leaderboard-submit" class="lb-submit" type="button">登录并提交本局成绩</button>
             </div>
         </div>
     </div>
@@ -588,6 +576,104 @@
             CUT_FALL_SPEED: 0.08,
             CUT_FALL_GRAVITY: 0.005,
         };
+
+        // ========== 腾讯新闻真实排行榜配置 ==========
+        // 上线前向趣玩后端登记 activity_id 后，将空字符串替换为批准的值。
+        // 本游戏分数没有理论上限，登记时还需和后端确认“单次提交分值上限”。
+        const RANKING_CONFIG = {
+            activityId: '',
+            cumulativeRanking: 0, // 0：历史最佳榜；1：累计榜
+            rankingSize: 10,
+        };
+
+        function getCookie(name) {
+            const match = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]*)'));
+            return match ? decodeURIComponent(match[1]) : '';
+        }
+
+        function getBknSign() {
+            const token = getCookie('news_token');
+            let hash = 5381;
+            for (let i = 0; i < token.length; i++) {
+                hash += (hash << 5) + token.charCodeAt(i);
+            }
+            return token ? (hash & 0x7fffffff) : 0;
+        }
+
+        function getRankingApiBase() {
+            const env = new URLSearchParams(window.location.search).get('rankingEnv');
+            const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+            return env === 'test' || (env !== 'formal' && isLocal)
+                ? 'https://dev.inews.qq.com'
+                : 'https://api.prize.qq.com';
+        }
+
+        function isRankingConfigured() {
+            return Boolean(RANKING_CONFIG.activityId);
+        }
+
+        async function postRanking(path, payload) {
+            const response = await fetch(`${getRankingApiBase()}${path}`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) throw new Error(`网络请求失败（${response.status}）`);
+
+            const result = await response.json();
+            if (result.code !== 0) throw new Error(result.msg || '排行榜服务暂不可用');
+            return result.data || {};
+        }
+
+        async function getRankingBoard() {
+            return postRanking('/activity/ranking_board', {
+                activityId: RANKING_CONFIG.activityId,
+                cumulativeRanking: RANKING_CONFIG.cumulativeRanking,
+                rankingSize: RANKING_CONFIG.rankingSize,
+            });
+        }
+
+        async function submitRanking(score) {
+            const bknSign = getBknSign();
+            if (!bknSign) throw new Error('请先登录腾讯新闻账号');
+
+            return postRanking('/activity/ranking', {
+                activityId: RANKING_CONFIG.activityId,
+                cumulativeRanking: RANKING_CONFIG.cumulativeRanking,
+                rankingSize: RANKING_CONFIG.rankingSize,
+                score: Math.max(0, Math.floor(score)),
+                bknSign,
+            });
+        }
+
+        function getNewsJsApi() {
+            return window.QNJSAPI || null;
+        }
+
+        async function getNewsUserInfo() {
+            const api = getNewsJsApi();
+            if (!api || typeof api.getUserInfo !== 'function') return null;
+            try {
+                const result = await api.getUserInfo();
+                const userInfo = result && (result.data || result);
+                return userInfo && userInfo.account ? userInfo : null;
+            } catch (_) {
+                return null;
+            }
+        }
+
+        async function loginForRanking() {
+            const api = getNewsJsApi();
+            if (!api || typeof api.login !== 'function') {
+                throw new Error('请在腾讯新闻 App 内登录后再提交成绩');
+            }
+            // 必须由用户点击触发，避免页面加载或游戏结束时主动弹登录框。
+            await api.login();
+            const userInfo = await getNewsUserInfo();
+            if (!userInfo) throw new Error('登录未完成，请稍后重试');
+            return userInfo;
+        }
 
         // ========== Game State ==========
         class GameState {
@@ -852,6 +938,7 @@
                 this.renderer = new Renderer(this.canvas);
                 this.audio = new AudioManager();
                 this.state = new GameState();
+                this.isSubmittingScore = false;
                 
                 // UI elements
                 this.ui = {
@@ -865,6 +952,10 @@
                     flashOverlay: document.getElementById('flash-overlay'),
                     newRecord: document.getElementById('new-record'),
                     gameOverTitle: document.getElementById('game-over-title'),
+                    leaderboardStatus: document.getElementById('leaderboard-status'),
+                    leaderboardMyResult: document.getElementById('leaderboard-my-result'),
+                    leaderboardList: document.getElementById('leaderboard-list'),
+                    leaderboardSubmit: document.getElementById('leaderboard-submit'),
                 };
                 
                 this.bindEvents();
@@ -893,11 +984,11 @@
                 
                 lbBtn.addEventListener('touchstart', (e) => {
                     e.stopPropagation();
-                    lbModal.classList.add('show');
+                    this.openLeaderboard();
                 }, { passive: false });
                 lbBtn.addEventListener('mousedown', (e) => {
                     e.stopPropagation();
-                    lbModal.classList.add('show');
+                    this.openLeaderboard();
                 });
                 
                 lbClose.addEventListener('touchstart', (e) => {
@@ -912,20 +1003,156 @@
                 // Close modal by tapping background
                 lbModal.addEventListener('touchstart', (e) => {
                     if (e.target === lbModal) {
-                        e.stopPropagation();
                         lbModal.classList.remove('show');
                     }
+                    e.stopPropagation();
                 }, { passive: false });
                 lbModal.addEventListener('mousedown', (e) => {
                     if (e.target === lbModal) {
-                        e.stopPropagation();
                         lbModal.classList.remove('show');
                     }
+                    e.stopPropagation();
                 });
+
+                const submitScore = (e) => {
+                    e.stopPropagation();
+                    this.loginAndSubmitScore();
+                };
+                // 容器会在 touchend 阶段阻止默认行为，移动端需直接在 touchstart 提交。
+                this.ui.leaderboardSubmit.addEventListener('touchstart', submitScore, { passive: true });
+                this.ui.leaderboardSubmit.addEventListener('mousedown', submitScore);
+                this.ui.leaderboardSubmit.addEventListener('click', submitScore);
                 
                 window.addEventListener('resize', () => {
                     this.renderer.resize();
                 });
+            }
+
+            setLeaderboardStatus(message = '') {
+                this.ui.leaderboardStatus.textContent = message;
+            }
+
+            setMyRanking(data) {
+                const bestRank = data && data.best_rank;
+                if (!bestRank || !bestRank.rank) {
+                    this.ui.leaderboardMyResult.hidden = true;
+                    return;
+                }
+                this.ui.leaderboardMyResult.textContent = `我的最佳：第 ${bestRank.rank} 名，${bestRank.score || 0} 分`;
+                this.ui.leaderboardMyResult.hidden = false;
+            }
+
+            renderLeaderboard(data) {
+                const board = Array.isArray(data && data.ranking_board) ? data.ranking_board : [];
+                this.ui.leaderboardList.replaceChildren();
+
+                if (!board.length) {
+                    const empty = document.createElement('div');
+                    empty.className = 'lb-empty';
+                    empty.textContent = '暂无上榜成绩，快来争夺第一名吧';
+                    this.ui.leaderboardList.appendChild(empty);
+                    return;
+                }
+
+                board.forEach((item, index) => {
+                    const ranking = item.ranking || item;
+                    const userInfo = item.user_info || item.userInfo || {};
+                    const rank = Number(ranking.rank || index + 1);
+                    const row = document.createElement('div');
+                    row.className = 'lb-item';
+
+                    const rankEl = document.createElement('div');
+                    rankEl.className = `lb-rank ${rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : 'normal'}`;
+                    rankEl.textContent = rank;
+
+                    const info = document.createElement('div');
+                    info.className = 'lb-info';
+                    const name = document.createElement('div');
+                    name.className = 'lb-name';
+                    name.textContent = userInfo.nick || userInfo.nickname || '匿名用户';
+                    const layers = document.createElement('div');
+                    layers.className = 'lb-layers';
+                    layers.textContent = '历史最佳成绩';
+                    info.append(name, layers);
+
+                    const score = document.createElement('div');
+                    score.className = 'lb-score';
+                    score.textContent = String(ranking.score || 0);
+                    row.append(rankEl, info, score);
+                    this.ui.leaderboardList.appendChild(row);
+                });
+            }
+
+            async openLeaderboard() {
+                document.getElementById('leaderboard-modal').classList.add('show');
+                this.ui.leaderboardMyResult.hidden = true;
+                this.ui.leaderboardSubmit.hidden = this.state.gamePhase !== 'over';
+
+                if (!isRankingConfigured()) {
+                    this.setLeaderboardStatus('排行榜尚未配置 activity_id');
+                    this.ui.leaderboardList.replaceChildren();
+                    const empty = document.createElement('div');
+                    empty.className = 'lb-empty';
+                    empty.textContent = '完成趣玩后端登记后即可开启真实排行榜';
+                    this.ui.leaderboardList.appendChild(empty);
+                    this.ui.leaderboardSubmit.disabled = true;
+                    return;
+                }
+
+                this.ui.leaderboardSubmit.disabled = false;
+                this.setLeaderboardStatus('正在获取实时榜单…');
+                this.ui.leaderboardList.replaceChildren();
+                const loading = document.createElement('div');
+                loading.className = 'lb-empty';
+                loading.textContent = '正在加载排行榜…';
+                this.ui.leaderboardList.appendChild(loading);
+
+                try {
+                    const data = await getRankingBoard();
+                    this.renderLeaderboard(data);
+                    this.setLeaderboardStatus('历史最佳排行榜');
+                } catch (error) {
+                    this.setLeaderboardStatus(error.message || '获取排行榜失败');
+                    this.ui.leaderboardList.replaceChildren();
+                    const empty = document.createElement('div');
+                    empty.className = 'lb-empty';
+                    empty.textContent = '暂时无法获取榜单，请稍后再试';
+                    this.ui.leaderboardList.appendChild(empty);
+                }
+            }
+
+            async submitCurrentScoreIfLoggedIn() {
+                if (!isRankingConfigured() || this.state.totalScore <= 0) return;
+                const userInfo = await getNewsUserInfo();
+                if (!userInfo) return;
+
+                try {
+                    const data = await submitRanking(this.state.totalScore);
+                    this.setMyRanking(data);
+                } catch (error) {
+                    console.warn('[Ranking] 自动提交失败：', error.message);
+                }
+            }
+
+            async loginAndSubmitScore() {
+                if (!isRankingConfigured() || this.isSubmittingScore) return;
+                this.isSubmittingScore = true;
+                this.ui.leaderboardSubmit.disabled = true;
+                this.setLeaderboardStatus('正在登录并提交成绩…');
+
+                try {
+                    await loginForRanking();
+                    const data = await submitRanking(this.state.totalScore);
+                    this.renderLeaderboard(data);
+                    this.setMyRanking(data);
+                    this.setLeaderboardStatus('成绩已提交，已更新为历史最佳');
+                    this.ui.leaderboardSubmit.hidden = true;
+                } catch (error) {
+                    this.setLeaderboardStatus(error.message || '提交成绩失败');
+                    this.ui.leaderboardSubmit.disabled = false;
+                } finally {
+                    this.isSubmittingScore = false;
+                }
             }
 
             handleTap() {
@@ -1204,6 +1431,7 @@
                     // 结束页显示排行榜入口
                     document.getElementById('leaderboard-btn').classList.remove('hidden');
                     this.updateUI();
+                    this.submitCurrentScoreIfLoggedIn();
                 }, 800);
             }
 
@@ -1352,6 +1580,19 @@
         // ========== Initialize ==========
         window.addEventListener('DOMContentLoaded', () => {
             new Game();
+
+            // NativeBar 的返回按钮优先关闭 H5 内弹层；返回 true 时再交给客户端退出页面。
+            // 此方法必须同步返回，不能改为 async 或返回 Promise。
+            window.Quwan = window.Quwan || {};
+            const previousOnBackClick = window.Quwan.onBackClick;
+            window.Quwan.onBackClick = () => {
+                const leaderboardModal = document.getElementById('leaderboard-modal');
+                if (leaderboardModal && leaderboardModal.classList.contains('show')) {
+                    leaderboardModal.classList.remove('show');
+                    return false;
+                }
+                return typeof previousOnBackClick === 'function' ? previousOnBackClick() : true;
+            };
         });
     })();
     </script>
