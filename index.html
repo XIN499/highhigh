@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>堆高高 3D</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: #3a3f5c;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+        }
+
+        #game-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* UI Overlay */
+        #ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        #best-score {
+            margin-top: env(safe-area-inset-top, 20px);
+            padding-top: 40px;
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            letter-spacing: 2px;
+        }
+
+        #current-score {
+            margin-top: 40px;
+            font-size: 72px;
+            font-weight: 700;
+            color: #ffffff;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+            transition: transform 0.1s ease;
+        }
+
+        #current-score.bump {
+            transform: scale(1.2);
+        }
+
+        /* Perfect feedback */
+        #perfect-text {
+            position: absolute;
+            top: 35%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(0);
+            font-size: 36px;
+            font-weight: 700;
+            color: #ffd700;
+            text-shadow: 0 0 20px rgba(255, 215, 0, 0.6);
+            opacity: 0;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none;
+        }
+
+        #perfect-text.show {
+            transform: translate(-50%, -50%) scale(1);
+            opacity: 1;
+        }
+
+        /* Combo display */
+        #combo-text {
+            position: absolute;
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 20px;
+            font-weight: 600;
+            color: rgba(255, 215, 0, 0.8);
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* Game over overlay */
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.5s ease;
+        }
+
+        #game-over.show {
+            opacity: 1;
+            pointer-events: none;
+        }
+
+        #game-over-title {
+            font-size: 42px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 30px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        #restart-hint {
+            font-size: 18px;
+            color: rgba(255, 100, 100, 0.9);
+            margin-top: 20px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        #new-record {
+            font-size: 20px;
+            color: #ffd700;
+            margin-bottom: 15px;
+            opacity: 0;
+            text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+        }
+
+        #new-record.show {
+            opacity: 1;
+            animation: glow 1.5s ease-in-out infinite;
+        }
+
+        /* Start screen */
+        #start-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        #start-title {
+            font-size: 36px;
+            font-weight: 700;
+            color: #ffffff;
+            margin-bottom: 20px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+
+        #start-hint {
+            font-size: 18px;
+            color: rgba(255, 255, 255, 0.6);
+            animation: pulse 2s ease-in-out infinite;
+        }
+
+        /* Guide text */
+        #guide-text {
+            position: absolute;
+            bottom: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.5);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        #guide-text.show {
+            opacity: 1;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+
+        @keyframes glow {
+            0%, 100% { text-shadow: 0 0 10px rgba(255, 215, 0, 0.5); }
+            50% { text-shadow: 0 0 20px rgba(255, 215, 0, 0.8), 0 0 40px rgba(255, 215, 0, 0.4); }
+        }
+
+        /* Screen flash on perfect */
+        #flash-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="game-canvas"></canvas>
+        <div id="ui-overlay">
+            <div id="best-score">最佳记录  0</div>
+            <div id="current-score">0</div>
+            <div id="perfect-text">PERFECT</div>
+            <div id="combo-text"></div>
+        </div>
+        <div id="game-over">
+            <div id="new-record">🎉 新纪录！</div>
+            <div id="game-over-title">游戏结束</div>
+            <div id="restart-hint">点击重新开始</div>
+        </div>
+        <div id="start-screen">
+            <div id="start-title">堆高高 3D</div>
+            <div id="start-hint">点击屏幕开始游戏</div>
+        </div>
+        <div id="guide-text">点击屏幕放下积木</div>
+        <div id="flash-overlay"></div>
+    </div>
+
+    <script>
+    (() => {
+        'use strict';
+
+        // ========== Configuration ==========
+        const CONFIG = {
+            // Block dimensions
+            BLOCK_SIZE: 1.0,        // Initial size (both width and depth)
+            BLOCK_HEIGHT: 0.2,      // Height of each block
+            
+            // Movement
+            MOVE_RANGE: 2.5,        // How far blocks move from center
+            BASE_SPEED: 0.03,       // Initial movement speed
+            MAX_SPEED: 0.07,        // Maximum movement speed
+            
+            // Perfect tolerance (fraction of block size)
+            PERFECT_TOLERANCE_EASY: 0.06,
+            PERFECT_TOLERANCE_MED: 0.05,
+            PERFECT_TOLERANCE_HARD: 0.04,
+            
+            // Minimum block size before game over
+            MIN_BLOCK_SIZE: 0.05,
+            
+            // Camera
+            CAMERA_FOLLOW_SPEED: 0.08,
+            
+            // Colors - gradient from pink to blue
+            COLORS: [
+                { r: 230, g: 100, b: 150 },  // Pink
+                { r: 200, g: 100, b: 180 },  // Pink-purple
+                { r: 170, g: 110, b: 200 },  // Purple
+                { r: 140, g: 120, b: 210 },  // Blue-purple
+                { r: 120, g: 140, b: 220 },  // Light blue
+                { r: 100, g: 160, b: 230 },  // Blue
+            ],
+            
+            // Background
+            BG_COLOR: { r: 58, g: 63, b: 92 },
+            
+            // Animation
+            DROP_SPEED: 0.15,
+            CUT_FALL_SPEED: 0.08,
+            CUT_FALL_GRAVITY: 0.005,
+        };
+
+        // ========== Game State ==========
+        class GameState {
+            constructor() {
+                this.reset();
+                this.bestScore = parseInt(localStorage.getItem('stackBest') || '0');
+                this.gamePhase = 'start'; // start, playing, over
+                this.isFirstGame = !localStorage.getItem('hasPlayed');
+            }
+
+            reset() {
+                this.score = 0;
+                this.layer = 0;
+                this.perfectCombo = 0;
+                this.totalScore = 0;
+                this.stack = [];
+                this.currentBlock = null;
+                this.movingDirection = 1;
+                this.cutPieces = [];
+                this.cameraY = 0;
+                this.targetCameraY = 0;
+                this.cameraZoom = 1.0;
+                this.targetCameraZoom = 1.0;
+                this.gamePhase = 'playing';
+                this.dropAnimation = null;
+                this.speed = CONFIG.BASE_SPEED;
+                this.shakeAmount = 0;
+                this.guidShown = false;
+            }
+        }
+
+        // ========== 3D Math Utilities ==========
+        // Isometric orthographic projection (no perspective distortion)
+        function project(x, y, z, cameraY, zoom) {
+            // Use logical size
+            const logicalWidth = window.innerWidth;
+            const logicalHeight = window.innerHeight;
+            
+            // Translate Y for camera follow
+            const ty = y - cameraY;
+            
+            // Isometric angles: rotate 45° around Y, then ~35.264° around X for true isometric
+            const angleY = Math.PI / 5;   // ~36° horizontal rotation
+            const angleX = Math.PI / 7;   // ~25° vertical tilt (subtle top view)
+            
+            const cosY = Math.cos(angleY);
+            const sinY = Math.sin(angleY);
+            const cosX = Math.cos(angleX);
+            const sinX = Math.sin(angleX);
+            
+            // Rotate around Y axis (horizontal spin)
+            const rx = x * cosY - z * sinY;
+            const rz = x * sinY + z * cosY;
+            
+            // Rotate around X axis (tilt down)
+            const ry = ty * cosX - rz * sinX;
+            
+            // Orthographic projection with zoom
+            const zoomFactor = zoom || 1.0;
+            const scale = Math.min(logicalWidth, logicalHeight) * 0.23 * zoomFactor;
+            
+            const screenX = logicalWidth / 2 + rx * scale;
+            const screenY = logicalHeight * 0.6 - ry * scale;
+            
+            return { x: screenX, y: screenY };
+        }
+
+        function getBlockColor(layerIndex) {
+            const colors = CONFIG.COLORS;
+            const cycleLength = colors.length * 2;
+            const pos = (layerIndex % cycleLength) / cycleLength;
+            
+            let t, c1, c2;
+            if (pos < 0.5) {
+                t = pos * 2;
+                const idx = Math.floor(t * (colors.length - 1));
+                const frac = t * (colors.length - 1) - idx;
+                c1 = colors[Math.min(idx, colors.length - 1)];
+                c2 = colors[Math.min(idx + 1, colors.length - 1)];
+            } else {
+                t = (pos - 0.5) * 2;
+                const idx = Math.floor((1 - t) * (colors.length - 1));
+                const frac = (1 - t) * (colors.length - 1) - idx;
+                c1 = colors[Math.min(idx, colors.length - 1)];
+                c2 = colors[Math.min(idx + 1, colors.length - 1)];
+                t = frac;
+            }
+            
+            if (!c1) c1 = colors[0];
+            if (!c2) c2 = colors[colors.length - 1];
+            
+            const tFrac = (layerIndex % (colors.length - 1)) / (colors.length - 1);
+            const idx = Math.min(Math.floor(layerIndex / 2) % colors.length, colors.length - 1);
+            const nextIdx = Math.min(idx + 1, colors.length - 1);
+            const blend = (layerIndex % 2) * 0.5;
+            
+            const color = colors[idx];
+            const nextColor = colors[nextIdx];
+            
+            return {
+                r: color.r + (nextColor.r - color.r) * blend,
+                g: color.g + (nextColor.g - color.g) * blend,
+                b: color.b + (nextColor.b - color.b) * blend,
+            };
+        }
+
+        // ========== Rendering ==========
+        class Renderer {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.resize();
+            }
+
+            resize() {
+                const dpr = window.devicePixelRatio || 1;
+                this.dpr = dpr;
+                this.logicalWidth = window.innerWidth;
+                this.logicalHeight = window.innerHeight;
+                this.canvas.width = this.logicalWidth * dpr;
+                this.canvas.height = this.logicalHeight * dpr;
+                this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+                this.canvas.style.width = this.logicalWidth + 'px';
+                this.canvas.style.height = this.logicalHeight + 'px';
+            }
+
+            clear() {
+                const { ctx } = this;
+                const bg = CONFIG.BG_COLOR;
+                
+                // Gradient background
+                const gradient = ctx.createLinearGradient(0, 0, 0, this.logicalHeight);
+                gradient.addColorStop(0, `rgb(${bg.r - 10}, ${bg.g - 10}, ${bg.b - 10})`);
+                gradient.addColorStop(1, `rgb(${bg.r + 10}, ${bg.g + 10}, ${bg.b + 15})`);
+                ctx.fillStyle = gradient;
+                ctx.fillRect(0, 0, this.logicalWidth, this.logicalHeight);
+            }
+
+            drawBlock(block, cameraY, alpha = 1, zoom = 1.0) {
+                const { ctx } = this;
+                const { x, z, y, width, depth } = block;
+                const h = CONFIG.BLOCK_HEIGHT;
+                
+                // 8 vertices of the block
+                // Top face: 0-3, Bottom face: 4-7
+                const vertices = [
+                    { x: x - width/2, y: y + h, z: z - depth/2 },  // 0: top-left-back
+                    { x: x + width/2, y: y + h, z: z - depth/2 },  // 1: top-right-back
+                    { x: x + width/2, y: y + h, z: z + depth/2 },  // 2: top-right-front
+                    { x: x - width/2, y: y + h, z: z + depth/2 },  // 3: top-left-front
+                    { x: x - width/2, y: y, z: z - depth/2 },      // 4: bottom-left-back
+                    { x: x + width/2, y: y, z: z - depth/2 },      // 5: bottom-right-back
+                    { x: x + width/2, y: y, z: z + depth/2 },      // 6: bottom-right-front
+                    { x: x - width/2, y: y, z: z + depth/2 },      // 7: bottom-left-front
+                ];
+                
+                const projected = vertices.map(v => project(v.x, v.y, v.z, cameraY, zoom));
+                
+                const color = block.color || getBlockColor(block.layerIndex || 0);
+                
+                // Draw visible faces in correct order (painter's algorithm)
+                // With our camera angle, visible faces are: top, right side, front
+                
+                // Left side face (darker, partially visible)
+                this.drawFace(
+                    [projected[0], projected[4], projected[7], projected[3]],
+                    `rgba(${Math.max(0, color.r - 55)}, ${Math.max(0, color.g - 55)}, ${Math.max(0, color.b - 55)}, ${alpha})`
+                );
+                
+                // Front face (medium dark)
+                this.drawFace(
+                    [projected[3], projected[2], projected[6], projected[7]],
+                    `rgba(${Math.max(0, color.r - 35)}, ${Math.max(0, color.g - 35)}, ${Math.max(0, color.b - 35)}, ${alpha})`
+                );
+                
+                // Right side face (slightly darker)
+                this.drawFace(
+                    [projected[1], projected[5], projected[6], projected[2]],
+                    `rgba(${Math.max(0, color.r - 50)}, ${Math.max(0, color.g - 50)}, ${Math.max(0, color.b - 50)}, ${alpha})`
+                );
+                
+                // Top face (brightest - always drawn last)
+                this.drawFace(
+                    [projected[0], projected[1], projected[2], projected[3]],
+                    `rgba(${Math.min(255, color.r + 20)}, ${Math.min(255, color.g + 20)}, ${Math.min(255, color.b + 20)}, ${alpha})`
+                );
+            }
+
+            drawFace(points, color) {
+                const { ctx } = this;
+                ctx.beginPath();
+                ctx.moveTo(points[0].x, points[0].y);
+                for (let i = 1; i < points.length; i++) {
+                    ctx.lineTo(points[i].x, points[i].y);
+                }
+                ctx.closePath();
+                ctx.fillStyle = color;
+                ctx.fill();
+                ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+                ctx.lineWidth = 0.5;
+                ctx.stroke();
+            }
+        }
+
+        // ========== Audio ==========
+        class AudioManager {
+            constructor() {
+                this.audioCtx = null;
+                this.initialized = false;
+            }
+
+            init() {
+                if (this.initialized) return;
+                try {
+                    this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    this.initialized = true;
+                } catch(e) {}
+            }
+
+            playTone(frequency, duration = 0.15, volume = 0.3) {
+                if (!this.audioCtx) return;
+                try {
+                    const osc = this.audioCtx.createOscillator();
+                    const gain = this.audioCtx.createGain();
+                    osc.connect(gain);
+                    gain.connect(this.audioCtx.destination);
+                    osc.frequency.value = frequency;
+                    osc.type = 'sine';
+                    gain.gain.setValueAtTime(volume, this.audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + duration);
+                    osc.start();
+                    osc.stop(this.audioCtx.currentTime + duration);
+                } catch(e) {}
+            }
+
+            playDrop() {
+                this.playTone(200, 0.1, 0.2);
+            }
+
+            playPerfect(combo) {
+                const baseFreq = 400 + combo * 50;
+                this.playTone(baseFreq, 0.2, 0.4);
+                setTimeout(() => this.playTone(baseFreq * 1.5, 0.15, 0.3), 80);
+            }
+
+            playCut() {
+                this.playTone(150, 0.1, 0.15);
+            }
+
+            playGameOver() {
+                this.playTone(200, 0.3, 0.3);
+                setTimeout(() => this.playTone(150, 0.4, 0.25), 150);
+            }
+        }
+
+        // ========== Game Engine ==========
+        class Game {
+            constructor() {
+                this.canvas = document.getElementById('game-canvas');
+                this.renderer = new Renderer(this.canvas);
+                this.audio = new AudioManager();
+                this.state = new GameState();
+                
+                // UI elements
+                this.ui = {
+                    bestScore: document.getElementById('best-score'),
+                    currentScore: document.getElementById('current-score'),
+                    perfectText: document.getElementById('perfect-text'),
+                    comboText: document.getElementById('combo-text'),
+                    gameOver: document.getElementById('game-over'),
+                    startScreen: document.getElementById('start-screen'),
+                    guideText: document.getElementById('guide-text'),
+                    flashOverlay: document.getElementById('flash-overlay'),
+                    newRecord: document.getElementById('new-record'),
+                    gameOverTitle: document.getElementById('game-over-title'),
+                };
+                
+                this.bindEvents();
+                this.updateUI();
+                this.loop();
+            }
+
+            bindEvents() {
+                const container = document.getElementById('game-container');
+                
+                const handleInput = (e) => {
+                    e.preventDefault();
+                    this.handleTap();
+                };
+
+                container.addEventListener('touchstart', handleInput, { passive: false });
+                container.addEventListener('mousedown', handleInput);
+                
+                // Prevent double-tap zoom on mobile
+                container.addEventListener('touchend', (e) => e.preventDefault(), { passive: false });
+                
+                window.addEventListener('resize', () => {
+                    this.renderer.resize();
+                });
+            }
+
+            handleTap() {
+                this.audio.init();
+                
+                if (this.state.gamePhase === 'start') {
+                    this.startGame();
+                    return;
+                }
+                
+                if (this.state.gamePhase === 'over') {
+                    this.startGame();
+                    return;
+                }
+                
+                if (this.state.gamePhase === 'playing' && !this.state.dropAnimation) {
+                    this.dropBlock();
+                }
+            }
+
+            startGame() {
+                this.state.reset();
+                this.ui.gameOver.classList.remove('show');
+                this.ui.startScreen.style.display = 'none';
+                this.ui.newRecord.classList.remove('show');
+                
+                // Create base block
+                const base = {
+                    x: 0,
+                    z: 0,
+                    y: 0,
+                    width: CONFIG.BLOCK_SIZE,
+                    depth: CONFIG.BLOCK_SIZE,
+                    layerIndex: 0,
+                    color: getBlockColor(0),
+                };
+                this.state.stack.push(base);
+                
+                // Create first moving block
+                this.createNextBlock();
+                
+                this.updateUI();
+                
+                // Show guide for first game
+                if (this.state.isFirstGame) {
+                    this.ui.guideText.classList.add('show');
+                }
+                
+                localStorage.setItem('hasPlayed', 'true');
+            }
+
+            createNextBlock() {
+                const stack = this.state.stack;
+                const topBlock = stack[stack.length - 1];
+                const layer = this.state.layer + 1;
+                const moveOnX = layer % 2 === 1;
+                
+                const block = {
+                    x: moveOnX ? -CONFIG.MOVE_RANGE : topBlock.x,
+                    z: moveOnX ? topBlock.z : -CONFIG.MOVE_RANGE,
+                    y: topBlock.y + CONFIG.BLOCK_HEIGHT,
+                    width: topBlock.width,
+                    depth: topBlock.depth,
+                    layerIndex: layer,
+                    color: getBlockColor(layer),
+                    moving: true,
+                    moveOnX: moveOnX,
+                    direction: 1,
+                };
+                
+                this.state.currentBlock = block;
+                
+                // Update speed
+                this.updateSpeed(layer);
+            }
+
+            updateSpeed(layer) {
+                if (layer <= 3 && this.state.isFirstGame) {
+                    // Newbie protection: slower for first 3 layers on first game
+                    this.state.speed = CONFIG.BASE_SPEED * 0.6;
+                } else if (layer <= 10) {
+                    this.state.speed = CONFIG.BASE_SPEED;
+                } else if (layer <= 30) {
+                    this.state.speed = CONFIG.BASE_SPEED + (layer - 10) * 0.001;
+                } else {
+                    this.state.speed = Math.min(CONFIG.MAX_SPEED, CONFIG.BASE_SPEED + 0.02 + (layer - 30) * 0.0005);
+                }
+            }
+
+            dropBlock() {
+                const block = this.state.currentBlock;
+                if (!block) return;
+                
+                block.moving = false;
+                
+                // Hide guide
+                if (this.ui.guideText.classList.contains('show')) {
+                    this.ui.guideText.classList.remove('show');
+                }
+                
+                const stack = this.state.stack;
+                const topBlock = stack[stack.length - 1];
+                
+                // Calculate overlap
+                let overlap, offset;
+                if (block.moveOnX) {
+                    offset = block.x - topBlock.x;
+                    overlap = block.width - Math.abs(offset);
+                } else {
+                    offset = block.z - topBlock.z;
+                    overlap = block.depth - Math.abs(offset);
+                }
+                
+                // Check for complete miss
+                if (overlap <= CONFIG.MIN_BLOCK_SIZE) {
+                    this.gameOver();
+                    return;
+                }
+                
+                // Check for perfect
+                const blockSize = block.moveOnX ? block.width : block.depth;
+                const tolerance = this.getPerfectTolerance() * blockSize;
+                
+                if (Math.abs(offset) <= tolerance) {
+                    this.handlePerfect(block, topBlock);
+                } else {
+                    this.handleCut(block, topBlock, offset, overlap);
+                }
+            }
+
+            getPerfectTolerance() {
+                const layer = this.state.layer;
+                if (layer <= 10) return CONFIG.PERFECT_TOLERANCE_EASY;
+                if (layer <= 30) return CONFIG.PERFECT_TOLERANCE_MED;
+                return CONFIG.PERFECT_TOLERANCE_HARD;
+            }
+
+            handlePerfect(block, topBlock) {
+                // Snap to perfect alignment
+                if (block.moveOnX) {
+                    block.x = topBlock.x;
+                } else {
+                    block.z = topBlock.z;
+                }
+                
+                this.state.perfectCombo++;
+                this.state.layer++;
+                
+                // Score: Perfect +2
+                this.state.totalScore += 2;
+                
+                // Combo bonus: 5 combo +5, 10 combo +10
+                if (this.state.perfectCombo === 5) {
+                    this.state.totalScore += 5;
+                } else if (this.state.perfectCombo === 10) {
+                    this.state.totalScore += 10;
+                }
+                
+                // Add to stack
+                this.state.stack.push({ ...block });
+                
+                // Visual & audio feedback
+                this.audio.playPerfect(this.state.perfectCombo);
+                this.showPerfect();
+                this.flashScreen();
+                this.state.shakeAmount = 3;
+                
+                // Update camera
+                this.updateCamera();
+                
+                // Next block
+                this.createNextBlock();
+                this.updateUI();
+            }
+
+            handleCut(block, topBlock, offset, overlap) {
+                this.state.perfectCombo = 0;
+                this.state.layer++;
+                this.state.totalScore += 1;
+                
+                // Create the remaining block
+                let newBlock = { ...block };
+                let cutPiece = { ...block, fallSpeed: 0 };
+                
+                if (block.moveOnX) {
+                    // Cut on X axis
+                    if (offset > 0) {
+                        newBlock.x = topBlock.x + (block.width - overlap) / 2;
+                        newBlock.width = overlap;
+                        cutPiece.x = newBlock.x + overlap / 2 + (block.width - overlap) / 2;
+                        cutPiece.width = block.width - overlap;
+                    } else {
+                        newBlock.x = topBlock.x - (block.width - overlap) / 2;
+                        newBlock.width = overlap;
+                        cutPiece.x = newBlock.x - overlap / 2 - (block.width - overlap) / 2;
+                        cutPiece.width = block.width - overlap;
+                    }
+                } else {
+                    // Cut on Z axis
+                    if (offset > 0) {
+                        newBlock.z = topBlock.z + (block.depth - overlap) / 2;
+                        newBlock.depth = overlap;
+                        cutPiece.z = newBlock.z + overlap / 2 + (block.depth - overlap) / 2;
+                        cutPiece.depth = block.depth - overlap;
+                    } else {
+                        newBlock.z = topBlock.z - (block.depth - overlap) / 2;
+                        newBlock.depth = overlap;
+                        cutPiece.z = newBlock.z - overlap / 2 - (block.depth - overlap) / 2;
+                        cutPiece.depth = block.depth - overlap;
+                    }
+                }
+                
+                // Add to stack
+                this.state.stack.push(newBlock);
+                
+                // Add cut piece to falling list
+                this.state.cutPieces.push(cutPiece);
+                
+                this.audio.playCut();
+                
+                // Update camera
+                this.updateCamera();
+                
+                // Next block
+                this.createNextBlock();
+                this.updateUI();
+            }
+
+            updateCamera() {
+                const topBlock = this.state.stack[this.state.stack.length - 1];
+                if (this.state.layer > 2) {
+                    this.state.targetCameraY = topBlock.y - CONFIG.BLOCK_HEIGHT * 2;
+                }
+            }
+
+            gameOver() {
+                this.state.gamePhase = 'over';
+                
+                // Add the falling block
+                const block = this.state.currentBlock;
+                if (block) {
+                    block.fallSpeed = 0;
+                    this.state.cutPieces.push(block);
+                }
+                this.state.currentBlock = null;
+                
+                this.audio.playGameOver();
+                
+                // Camera pull back: show the full tower
+                // Move camera to center of the tower (vertically)
+                const towerHeight = this.state.layer * CONFIG.BLOCK_HEIGHT;
+                this.state.targetCameraY = towerHeight * 0.4;
+                // Zoom out enough to fit the entire tower in view
+                const zoomNeeded = Math.max(0.3, Math.min(0.85, 1.0 - this.state.layer * 0.03));
+                this.state.targetCameraZoom = zoomNeeded;
+                
+                // Check new record
+                let isNewRecord = false;
+                if (this.state.totalScore > this.state.bestScore) {
+                    this.state.bestScore = this.state.totalScore;
+                    localStorage.setItem('stackBest', this.state.bestScore.toString());
+                    isNewRecord = true;
+                }
+                
+                // Show game over UI after delay
+                setTimeout(() => {
+                    if (isNewRecord) {
+                        this.ui.newRecord.classList.add('show');
+                    }
+                    this.ui.gameOver.classList.add('show');
+                    this.updateUI();
+                }, 800);
+            }
+
+            showPerfect() {
+                const perfectEl = this.ui.perfectText;
+                const comboEl = this.ui.comboText;
+                
+                perfectEl.classList.add('show');
+                
+                if (this.state.perfectCombo > 1) {
+                    comboEl.textContent = `× ${this.state.perfectCombo}`;
+                    comboEl.style.opacity = '1';
+                }
+                
+                setTimeout(() => {
+                    perfectEl.classList.remove('show');
+                    comboEl.style.opacity = '0';
+                }, 800);
+            }
+
+            flashScreen() {
+                const flash = this.ui.flashOverlay;
+                flash.style.opacity = '0.3';
+                setTimeout(() => {
+                    flash.style.opacity = '0';
+                }, 100);
+            }
+
+            updateUI() {
+                this.ui.bestScore.textContent = `最佳记录  ${this.state.bestScore}`;
+                this.ui.currentScore.textContent = this.state.totalScore;
+                
+                // Score bump animation
+                this.ui.currentScore.classList.add('bump');
+                setTimeout(() => this.ui.currentScore.classList.remove('bump'), 100);
+            }
+
+            // ========== Game Loop ==========
+            update() {
+                if (this.state.gamePhase === 'start') return;
+                
+                // ---- Playing-phase logic ----
+                if (this.state.gamePhase === 'playing') {
+                    // Move current block
+                    const block = this.state.currentBlock;
+                    if (block && block.moving) {
+                        if (block.moveOnX) {
+                            block.x += this.state.speed * block.direction;
+                            if (block.x > CONFIG.MOVE_RANGE) {
+                                block.x = CONFIG.MOVE_RANGE;
+                                block.direction = -1;
+                            } else if (block.x < -CONFIG.MOVE_RANGE) {
+                                block.x = -CONFIG.MOVE_RANGE;
+                                block.direction = 1;
+                            }
+                        } else {
+                            block.z += this.state.speed * block.direction;
+                            if (block.z > CONFIG.MOVE_RANGE) {
+                                block.z = CONFIG.MOVE_RANGE;
+                                block.direction = -1;
+                            } else if (block.z < -CONFIG.MOVE_RANGE) {
+                                block.z = -CONFIG.MOVE_RANGE;
+                                block.direction = 1;
+                            }
+                        }
+                    }
+                }
+                
+                // ---- Common updates (playing & over) ----
+                
+                // Update cut pieces (falling animation)
+                for (let i = this.state.cutPieces.length - 1; i >= 0; i--) {
+                    const piece = this.state.cutPieces[i];
+                    piece.fallSpeed += CONFIG.CUT_FALL_GRAVITY;
+                    piece.y -= piece.fallSpeed;
+                    
+                    // Remove if fallen off screen
+                    if (piece.y < this.state.cameraY - 5) {
+                        this.state.cutPieces.splice(i, 1);
+                    }
+                }
+                
+                // Smooth camera follow (faster during game over for dramatic effect)
+                const camSpeed = this.state.gamePhase === 'over' ? 0.04 : CONFIG.CAMERA_FOLLOW_SPEED;
+                this.state.cameraY += (this.state.targetCameraY - this.state.cameraY) * camSpeed;
+                
+                // Smooth camera zoom
+                if (this.state.cameraZoom !== undefined) {
+                    const zoomSpeed = this.state.gamePhase === 'over' ? 0.025 : 0.03;
+                    this.state.cameraZoom += (this.state.targetCameraZoom - this.state.cameraZoom) * zoomSpeed;
+                }
+                
+                // Decay shake
+                if (this.state.shakeAmount > 0) {
+                    this.state.shakeAmount *= 0.85;
+                    if (this.state.shakeAmount < 0.1) this.state.shakeAmount = 0;
+                }
+            }
+
+            render() {
+                this.renderer.clear();
+                
+                if (this.state.gamePhase === 'start') return;
+                
+                const cameraY = this.state.cameraY;
+                const zoom = this.state.cameraZoom || 1.0;
+                
+                // Apply screen shake
+                if (this.state.shakeAmount > 0) {
+                    const shakeX = (Math.random() - 0.5) * this.state.shakeAmount;
+                    const shakeY = (Math.random() - 0.5) * this.state.shakeAmount;
+                    this.renderer.ctx.save();
+                    this.renderer.ctx.translate(shakeX, shakeY);
+                }
+                
+                // Draw stack blocks (from bottom to top)
+                // When game over, show all blocks
+                const visibleStart = this.state.gamePhase === 'over' ? 0 : Math.max(0, this.state.stack.length - 30);
+                for (let i = visibleStart; i < this.state.stack.length; i++) {
+                    this.renderer.drawBlock(this.state.stack[i], cameraY, 1, zoom);
+                }
+                
+                // Draw current moving block
+                if (this.state.currentBlock) {
+                    this.renderer.drawBlock(this.state.currentBlock, cameraY, 1, zoom);
+                }
+                
+                // Draw cut pieces
+                for (const piece of this.state.cutPieces) {
+                    const alpha = Math.max(0, 1 - piece.fallSpeed * 3);
+                    this.renderer.drawBlock(piece, cameraY, alpha, zoom);
+                }
+                
+                if (this.state.shakeAmount > 0) {
+                    this.renderer.ctx.restore();
+                }
+            }
+
+            loop() {
+                this.update();
+                this.render();
+                requestAnimationFrame(() => this.loop());
+            }
+        }
+
+        // ========== Initialize ==========
+        window.addEventListener('DOMContentLoaded', () => {
+            new Game();
+        });
+    })();
+    </script>
+</body>
+</html>
